@@ -5,8 +5,8 @@ use polymarket_client_sdk_v2::bridge::{
     types::{DepositRequest, StatusRequest},
 };
 
-use crate::output::OutputFormat;
 use crate::output::bridge::{print_deposit, print_status, print_supported_assets};
+use crate::output::OutputFormat;
 
 #[derive(Args)]
 pub struct BridgeArgs {

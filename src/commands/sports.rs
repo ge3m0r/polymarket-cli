@@ -2,8 +2,8 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use polymarket_client_sdk_v2::gamma::{self, types::request::TeamsRequest};
 
-use crate::output::OutputFormat;
 use crate::output::sports::{print_sport_types, print_sports, print_teams};
+use crate::output::OutputFormat;
 
 #[derive(Args)]
 pub struct SportsArgs {

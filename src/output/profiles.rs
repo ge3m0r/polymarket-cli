@@ -1,6 +1,6 @@
 use polymarket_client_sdk_v2::gamma::types::response::PublicProfile;
 
-use super::{OutputFormat, detail_field, print_detail_table, print_json};
+use super::{detail_field, print_detail_table, print_json, OutputFormat};
 
 pub fn print_profile(p: &PublicProfile, output: &OutputFormat) -> anyhow::Result<()> {
     if matches!(output, OutputFormat::Json) {

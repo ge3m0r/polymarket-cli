@@ -1,7 +1,7 @@
 use alloy::primitives::{B256, U256};
 use anyhow::Result;
 
-use super::{OutputFormat, print_detail_table};
+use super::{print_detail_table, OutputFormat};
 
 pub fn print_tx_result(
     operation: &str,

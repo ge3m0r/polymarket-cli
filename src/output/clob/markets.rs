@@ -7,7 +7,7 @@ use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
 use super::END_CURSOR;
-use crate::output::{DASH, OutputFormat, truncate};
+use crate::output::{truncate, OutputFormat, DASH};
 
 pub fn print_clob_market(result: &MarketResponse, output: &OutputFormat) -> anyhow::Result<()> {
     match output {

@@ -6,9 +6,9 @@ use polymarket_client_sdk_v2::gamma::{
 };
 
 use super::is_numeric_id;
-use crate::output::OutputFormat;
 use crate::output::events::{print_event, print_events};
 use crate::output::tags::print_tags;
+use crate::output::OutputFormat;
 
 #[derive(Args)]
 pub struct EventsArgs {

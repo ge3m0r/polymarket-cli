@@ -4,7 +4,7 @@ use polymarket_client_sdk_v2::gamma::types::response::{
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use super::{DASH, OutputFormat, print_json, truncate};
+use super::{print_json, truncate, OutputFormat, DASH};
 
 #[derive(Tabled)]
 struct SportRow {

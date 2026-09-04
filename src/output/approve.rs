@@ -1,7 +1,7 @@
 use alloy::primitives::U256;
 use anyhow::Result;
-use tabled::Tabled;
 use tabled::settings::Style;
+use tabled::Tabled;
 
 use super::OutputFormat;
 

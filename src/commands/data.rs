@@ -10,12 +10,12 @@ use polymarket_client_sdk_v2::data::{
 };
 use polymarket_client_sdk_v2::types::{Address, B256};
 
-use crate::output::OutputFormat;
 use crate::output::data::{
     print_activity, print_builder_leaderboard, print_builder_volume, print_closed_positions,
     print_holders, print_leaderboard, print_live_volume, print_open_interest, print_positions,
     print_traded, print_trades, print_value,
 };
+use crate::output::OutputFormat;
 
 #[derive(Args)]
 pub struct DataArgs {

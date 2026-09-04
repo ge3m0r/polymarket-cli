@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::process::Command;
 
-use anyhow::{Context, bail};
+use anyhow::{bail, Context};
 
 const REPO: &str = "Polymarket/polymarket-cli";
 const BINARY: &str = "polymarket";

@@ -10,7 +10,7 @@ use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
 use super::END_CURSOR;
-use crate::output::{OutputFormat, format_decimal, truncate};
+use crate::output::{format_decimal, truncate, OutputFormat};
 
 pub fn print_server_time(timestamp: i64, output: &OutputFormat) -> anyhow::Result<()> {
     match output {

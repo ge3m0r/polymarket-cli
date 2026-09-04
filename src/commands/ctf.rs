@@ -7,8 +7,8 @@ use polymarket_client_sdk_v2::types::{Address, B256};
 use rust_decimal::Decimal;
 
 use crate::auth;
-use crate::output::OutputFormat;
 use crate::output::ctf as ctf_output;
+use crate::output::OutputFormat;
 
 use super::proxy;
 use super::{

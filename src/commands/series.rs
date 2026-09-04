@@ -5,8 +5,8 @@ use polymarket_client_sdk_v2::gamma::{
     types::request::{SeriesByIdRequest, SeriesListRequest},
 };
 
-use crate::output::OutputFormat;
 use crate::output::series::{print_series, print_series_item};
+use crate::output::OutputFormat;
 
 #[derive(Args)]
 pub struct SeriesArgs {

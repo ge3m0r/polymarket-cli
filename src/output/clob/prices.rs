@@ -6,7 +6,7 @@ use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use crate::output::{OutputFormat, truncate};
+use crate::output::{truncate, OutputFormat};
 
 pub fn print_price(result: &PriceResponse, output: &OutputFormat) -> anyhow::Result<()> {
     match output {
