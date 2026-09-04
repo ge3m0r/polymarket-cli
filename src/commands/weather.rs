@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{Context, Result, anyhow, ensure};
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use clap::{Args, Subcommand};
 use polymarket_client_sdk_v2::gamma::{
@@ -10,11 +10,12 @@ use polymarket_client_sdk_v2::gamma::{
 use rust_decimal::prelude::ToPrimitive;
 use serde_json::Value;
 
-use crate::output::weather::{
-    print_tokyo_backtest, print_tokyo_signal, print_tokyo_weather, FeeSchedule, HedgeSummary,
-    TokyoBacktestReport, TokyoBacktestRow, TokyoSignalReport, TokyoWeatherReport, WeatherMarketRow,
-};
 use crate::output::OutputFormat;
+use crate::output::weather::{
+    FeeSchedule, HedgeSummary, TokyoBacktestReport, TokyoBacktestRow, TokyoSignalReport,
+    TokyoWeatherReport, WeatherMarketRow, print_tokyo_backtest, print_tokyo_signal,
+    print_tokyo_weather,
+};
 
 const TOKYO_LATITUDE: f64 = 35.553;
 const TOKYO_LONGITUDE: f64 = 139.781;

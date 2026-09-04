@@ -9,12 +9,12 @@ use clap::{Args, Subcommand};
 use polymarket_client_sdk_v2::types::Address;
 
 use crate::auth;
-use crate::output::approve::{print_approval_status, print_tx_result, ApprovalStatus};
 use crate::output::OutputFormat;
+use crate::output::approve::{ApprovalStatus, print_approval_status, print_tx_result};
 
 use super::{
-    proxy, COLLATERAL_SYMBOL, CONDITIONAL_TOKENS, CTF_COLLATERAL_ADAPTER, CTF_EXCHANGE,
-    NEG_RISK_ADAPTER, NEG_RISK_CTF_COLLATERAL_ADAPTER, NEG_RISK_CTF_EXCHANGE,
+    COLLATERAL_SYMBOL, CONDITIONAL_TOKENS, CTF_COLLATERAL_ADAPTER, CTF_EXCHANGE, NEG_RISK_ADAPTER,
+    NEG_RISK_CTF_COLLATERAL_ADAPTER, NEG_RISK_CTF_EXCHANGE, proxy,
 };
 
 sol! {

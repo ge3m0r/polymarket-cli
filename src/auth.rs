@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use polymarket_client_sdk_v2::auth::state::Authenticated;
 use polymarket_client_sdk_v2::auth::{LocalSigner, Normal, Signer as _};
 use polymarket_client_sdk_v2::clob::types::SignatureType;
-use polymarket_client_sdk_v2::{clob, POLYGON};
+use polymarket_client_sdk_v2::{POLYGON, clob};
 
 use crate::config;
 

@@ -6,7 +6,7 @@ use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use super::{format_decimal, truncate, OutputFormat, DASH};
+use super::{DASH, OutputFormat, format_decimal, truncate};
 
 fn format_market(m: &Market) -> String {
     match m {

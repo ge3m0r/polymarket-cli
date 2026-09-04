@@ -12,9 +12,9 @@ use polymarket_client_sdk_v2::gamma::{
 };
 
 use super::is_numeric_id;
+use crate::output::OutputFormat;
 use crate::output::markets::{print_market, print_markets};
 use crate::output::tags::print_tags;
-use crate::output::OutputFormat;
 
 #[derive(Args)]
 pub struct MarketsArgs {

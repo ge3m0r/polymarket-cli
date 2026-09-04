@@ -9,8 +9,8 @@ use polymarket_client_sdk_v2::gamma::{
 };
 
 use super::is_numeric_id;
-use crate::output::tags::{print_related_tags, print_tag, print_tags};
 use crate::output::OutputFormat;
+use crate::output::tags::{print_related_tags, print_tag, print_tags};
 
 #[derive(Args)]
 pub struct TagsArgs {

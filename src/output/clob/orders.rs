@@ -7,7 +7,7 @@ use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
 use super::END_CURSOR;
-use crate::output::{truncate, OutputFormat};
+use crate::output::{OutputFormat, truncate};
 
 pub fn print_orders(result: &Page<OpenOrderResponse>, output: &OutputFormat) -> anyhow::Result<()> {
     match output {

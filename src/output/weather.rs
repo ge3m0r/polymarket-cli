@@ -3,7 +3,7 @@ use serde::Serialize;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use super::{print_json, OutputFormat};
+use super::{OutputFormat, print_json};
 
 #[derive(Debug, Serialize)]
 pub struct WeatherMarketRow {
@@ -407,9 +407,15 @@ pub fn print_tokyo_backtest(
     });
     println!("{}", Table::new(rows).with(Style::rounded()));
     println!();
-    println!("Each day enumerates every contiguous four-bucket band and trades only when its modeled expected P&L remains positive after fee and configured slippage.");
-    println!("Historical GEFS members are reconstructed from the prior-day archived hourly ensemble mean/spread using 31 normal quantiles with rank preserved across hours; this is an approximation, not the original member archive.");
-    println!("Historical prices are sampled from CLOB price history; archived best asks are unavailable, so the conservative result adds the configured per-share slippage.");
+    println!(
+        "Each day enumerates every contiguous four-bucket band and trades only when its modeled expected P&L remains positive after fee and configured slippage."
+    );
+    println!(
+        "Historical GEFS members are reconstructed from the prior-day archived hourly ensemble mean/spread using 31 normal quantiles with rank preserved across hours; this is an approximation, not the original member archive."
+    );
+    println!(
+        "Historical prices are sampled from CLOB price history; archived best asks are unavailable, so the conservative result adds the configured per-share slippage."
+    );
     Ok(())
 }
 

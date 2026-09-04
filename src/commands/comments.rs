@@ -3,13 +3,13 @@ use clap::{Args, Subcommand};
 use polymarket_client_sdk_v2::gamma::{
     self,
     types::{
-        request::{CommentsByIdRequest, CommentsByUserAddressRequest, CommentsRequest},
         ParentEntityType,
+        request::{CommentsByIdRequest, CommentsByUserAddressRequest, CommentsRequest},
     },
 };
 
-use crate::output::comments::{print_comment, print_comments};
 use crate::output::OutputFormat;
+use crate::output::comments::{print_comment, print_comments};
 
 #[derive(Args)]
 pub struct CommentsArgs {

@@ -3,8 +3,8 @@ use clap::{Args, Subcommand};
 use polymarket_client_sdk_v2::gamma::{self, types::request::PublicProfileRequest};
 use polymarket_client_sdk_v2::types::Address;
 
-use crate::output::profiles::print_profile;
 use crate::output::OutputFormat;
+use crate::output::profiles::print_profile;
 
 #[derive(Args)]
 pub struct ProfilesArgs {

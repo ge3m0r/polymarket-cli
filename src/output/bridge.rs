@@ -5,7 +5,7 @@ use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use super::{detail_field, format_decimal, print_detail_table, OutputFormat, DASH};
+use super::{DASH, OutputFormat, detail_field, format_decimal, print_detail_table};
 
 pub fn print_deposit(response: &DepositResponse, output: &OutputFormat) -> anyhow::Result<()> {
     match output {

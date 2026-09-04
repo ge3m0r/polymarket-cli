@@ -3,8 +3,8 @@ use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
 use super::{
-    active_status, detail_field, format_date, format_decimal, print_detail_table, print_json,
-    truncate, OutputFormat, DASH,
+    DASH, OutputFormat, active_status, detail_field, format_date, format_decimal,
+    print_detail_table, print_json, truncate,
 };
 
 #[derive(Tabled)]

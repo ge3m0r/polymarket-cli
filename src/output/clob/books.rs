@@ -5,7 +5,7 @@ use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use crate::output::{truncate, OutputFormat, DASH};
+use crate::output::{DASH, OutputFormat, truncate};
 
 pub fn print_order_book(
     result: &OrderBookSummaryResponse,

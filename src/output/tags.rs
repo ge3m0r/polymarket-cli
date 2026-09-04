@@ -3,7 +3,7 @@ use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
 use super::{
-    detail_field, format_date, print_detail_table, print_json, truncate, OutputFormat, DASH,
+    DASH, OutputFormat, detail_field, format_date, print_detail_table, print_json, truncate,
 };
 
 #[derive(Tabled)]
