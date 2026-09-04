@@ -1,4 +1,4 @@
-use polymarket_client_sdk_v2::types::{Address, address};
+use polymarket_client_sdk_v2::types::{address, Address};
 
 pub(crate) const COLLATERAL_SYMBOL: &str = "pUSD";
 pub(crate) const COLLATERAL_ADDRESS_STR: &str = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
@@ -20,8 +20,8 @@ pub(crate) mod proxy {
     use alloy::primitives::U256;
     use alloy::sol;
     use anyhow::{Context, Result};
-    use polymarket_client_sdk_v2::POLYGON;
     use polymarket_client_sdk_v2::types::{Address, B256};
+    use polymarket_client_sdk_v2::POLYGON;
 
     use crate::auth;
 
@@ -107,6 +107,7 @@ pub(crate) mod sports;
 pub(crate) mod tags;
 pub(crate) mod upgrade;
 pub(crate) mod wallet;
+pub(crate) mod weather;
 
 pub(crate) fn is_numeric_id(id: &str) -> bool {
     id.parse::<u64>().is_ok()

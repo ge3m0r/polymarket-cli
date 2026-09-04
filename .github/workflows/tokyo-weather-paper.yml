@@ -1,0 +1,64 @@
+name: Tokyo weather paper signal
+
+on:
+  schedule:
+    # 14:05 in Tokyo. GitHub schedules use UTC and may start a few minutes late.
+    - cron: "5 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tokyo-weather-paper-signal
+  cancel-in-progress: false
+
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.88
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup default 1.88.0
+
+      - name: Generate paper signal
+        run: |
+          mkdir -p paper-signals
+          cargo run --release --locked -- \
+            --output json \
+            weather signal-tokyo \
+            --legacy-weight 0.75 \
+            --size 5 \
+            --slippage 0.01 \
+            --min-expected-pnl 1 \
+            > "paper-signals/tokyo-$(date -u +%F).json"
+
+      - name: Write run summary
+        run: |
+          report="$(find paper-signals -name '*.json' -type f | head -n 1)"
+          {
+            echo "## Tokyo weather paper signal"
+            echo
+            echo "- Target date: $(jq -r '.target_date' "$report")"
+            echo "- Action: **$(jq -r '.action' "$report")**"
+            echo "- Legacy band: $(jq -r '.legacy_band | join(" / ")' "$report")"
+            echo "- Optimized band: $(jq -r '.optimized_band | join(" / ")' "$report")"
+            echo "- Blended coverage: $(jq -r '.blended_coverage * 100 | tostring' "$report")%"
+            echo "- Conservative cost: $(jq -r '.conservative_total_cost' "$report") USDC"
+            echo "- Conservative expected P&L: $(jq -r '.conservative_expected_pnl' "$report") USDC"
+            echo
+            echo "Simulation only. No wallet is configured and no order is placed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload paper signal
+        uses: actions/upload-artifact@v4
+        with:
+          name: tokyo-weather-paper-signal-${{ github.run_number }}
+          path: paper-signals/*.json
+          retention-days: 90
+          if-no-files-found: error

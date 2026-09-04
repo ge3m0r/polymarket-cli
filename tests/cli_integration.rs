@@ -27,9 +27,68 @@ fn help_lists_all_top_level_commands() {
             .and(predicate::str::contains("ctf"))
             .and(predicate::str::contains("data"))
             .and(predicate::str::contains("bridge"))
+            .and(predicate::str::contains("weather"))
             .and(predicate::str::contains("wallet"))
             .and(predicate::str::contains("status")),
     );
+}
+
+#[test]
+fn weather_help_lists_tokyo_subcommand() {
+    polymarket()
+        .args(["weather", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("tokyo")
+                .and(predicate::str::contains("signal-tokyo"))
+                .and(predicate::str::contains("backtest-tokyo")),
+        );
+}
+
+#[test]
+fn weather_tokyo_help_lists_research_options() {
+    polymarket()
+        .args(["weather", "tokyo", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("--date")
+                .and(predicate::str::contains("--model"))
+                .and(predicate::str::contains("--bias-c")),
+        );
+}
+
+#[test]
+fn weather_backtest_help_lists_history_options() {
+    polymarket()
+        .args(["weather", "backtest-tokyo", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("--since")
+                .and(predicate::str::contains("--until"))
+                .and(predicate::str::contains("--recent"))
+                .and(predicate::str::contains("--lead-days"))
+                .and(predicate::str::contains("--model"))
+                .and(predicate::str::contains("--size"))
+                .and(predicate::str::contains("--entry-hour-utc"))
+                .and(predicate::str::contains("--slippage")),
+        );
+}
+
+#[test]
+fn weather_signal_help_lists_strategy_options() {
+    polymarket()
+        .args(["weather", "signal-tokyo", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("--legacy-weight")
+                .and(predicate::str::contains("--size"))
+                .and(predicate::str::contains("--slippage"))
+                .and(predicate::str::contains("--min-expected-pnl")),
+        );
 }
 
 #[test]

@@ -58,6 +58,8 @@ enum Commands {
     Data(commands::data::DataArgs),
     /// Bridge assets from other chains to Polymarket
     Bridge(commands::bridge::BridgeArgs),
+    /// Research weather markets with ensemble forecasts
+    Weather(commands::weather::WeatherArgs),
     /// Manage wallet and authentication
     Wallet(commands::wallet::WalletArgs),
     /// Check API health status
@@ -125,6 +127,7 @@ pub(crate) async fn run(cli: Cli) -> anyhow::Result<()> {
         }
         Commands::Data(args) => commands::data::execute(&data, args, cli.output).await,
         Commands::Bridge(args) => commands::bridge::execute(&bridge, args, cli.output).await,
+        Commands::Weather(args) => commands::weather::execute(&gamma, args, cli.output).await,
         Commands::Wallet(args) => {
             commands::wallet::execute(args, cli.output, cli.private_key.as_deref())
         }

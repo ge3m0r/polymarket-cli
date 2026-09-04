@@ -10,13 +10,14 @@ pub(crate) mod profiles;
 pub(crate) mod series;
 pub(crate) mod sports;
 pub(crate) mod tags;
+pub(crate) mod weather;
 
 use chrono::{DateTime, Utc};
 use polymarket_client_sdk_v2::types::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use tabled::Table;
 use tabled::settings::object::Columns;
 use tabled::settings::{Modify, Style, Width};
+use tabled::Table;
 
 pub(crate) const DASH: &str = "—";
 

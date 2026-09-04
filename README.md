@@ -2,6 +2,8 @@
 
 Rust CLI for Polymarket. Browse markets, place orders, manage positions, and interact with onchain contracts — from a terminal or as a JSON API for scripts and agents.
 
+[中文 CLI 使用指南](CLI_USAGE.zh-CN.md) · [东京天气研究原型](docs/TOKYO_WEATHER_RESEARCH.zh-CN.md)
+
 > **Warning:** This is early, experimental software. Use at your own risk and do not use with large amounts of funds. APIs, commands, and behavior may change without notice. Always verify transactions before confirming.
 
 ## Install
