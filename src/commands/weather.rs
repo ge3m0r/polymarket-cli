@@ -1342,9 +1342,11 @@ pub async fn execute(
                 traded_event_count,
                 skipped_event_count,
                 selected_band_hits,
-                selected_band_accuracy: (traded_event_count > 0)
-                    .then_some(selected_band_hits as f64 / traded_event_count as f64)
-                    .unwrap_or(0.0),
+                selected_band_accuracy: if traded_event_count > 0 {
+                    selected_band_hits as f64 / traded_event_count as f64
+                } else {
+                    0.0
+                },
                 position_size_per_bucket: size,
                 entry_hour_utc,
                 conservative_slippage_per_share: slippage,
@@ -1354,12 +1356,18 @@ pub async fn execute(
                 total_taker_fee,
                 total_payout,
                 total_pnl,
-                roi: (total_cost > 0.0).then_some(total_pnl / total_cost).unwrap_or(0.0),
+                roi: if total_cost > 0.0 {
+                    total_pnl / total_cost
+                } else {
+                    0.0
+                },
                 conservative_total_cost,
                 conservative_total_pnl,
-                conservative_roi: (conservative_total_cost > 0.0)
-                    .then_some(conservative_total_pnl / conservative_total_cost)
-                    .unwrap_or(0.0),
+                conservative_roi: if conservative_total_cost > 0.0 {
+                    conservative_total_pnl / conservative_total_cost
+                } else {
+                    0.0
+                },
                 rows,
                 notes: vec![
                     "Forecasts use prior-run GEFS ensemble means and spreads archived at a fixed lead time for each valid hour; settlement winners come from closed Polymarket markets.".to_string(),
