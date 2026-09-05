@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -26,25 +27,85 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build paper-trading CLI
+        run: cargo build --release --locked
+
+      - name: Restore forward paper ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p paper-signals/open paper-signals/settled run-output
+          artifact_url="$(
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "${{ github.api_url }}/repos/${{ github.repository }}/actions/artifacts?name=tokyo-weather-paper-ledger&per_page=100" \
+              | jq -r '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .archive_download_url // empty'
+          )"
+          if [ -n "$artifact_url" ]; then
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "$artifact_url" --output /tmp/tokyo-weather-paper-ledger.zip
+            unzip -o -q /tmp/tokyo-weather-paper-ledger.zip -d paper-signals
+          fi
+
+      - name: Settle saved entry snapshots
+        run: |
+          mkdir -p paper-signals/open paper-signals/settled run-output
+          shopt -s nullglob
+          for signal in paper-signals/open/*.json; do
+            target="$(jq -r '.target_date' "$signal")"
+            settlement="run-output/tokyo-${target}-settlement.json"
+            target/release/polymarket --output json \
+              weather settle-tokyo-paper --signal "$signal" > "$settlement"
+            if [ "$(jq -r '.status' "$settlement")" = "SETTLED" ]; then
+              cp "$settlement" "paper-signals/settled/tokyo-${target}.json"
+              rm "$signal"
+            else
+              rm "$settlement"
+            fi
+          done
+
       - name: Generate paper signal
         run: |
-          mkdir -p paper-signals
-          cargo run --release --locked -- \
+          report="run-output/tokyo-signal.json"
+          target/release/polymarket \
             --output json \
             weather signal-tokyo \
             --legacy-weight 0.75 \
             --size 5 \
             --slippage 0.01 \
             --min-expected-pnl 1 \
-            > "paper-signals/tokyo-$(date -u +%F).json"
+            --max-entry-delay-minutes 15 \
+            > "$report"
+          target="$(jq -r '.target_date' "$report")"
+          if [ "$(jq -r '.entry_timing' "$report")" = "ON_TIME" ]; then
+            cp "$report" "paper-signals/open/tokyo-${target}.json"
+          fi
+
+      - name: Update ledger metadata
+        run: |
+          jq -n \
+            --arg updated_at "$(date -u +%FT%TZ)" \
+            --arg run_id "${{ github.run_id }}" \
+            '{format_version: 1, updated_at: $updated_at, run_id: $run_id}' \
+            > paper-signals/ledger.json
 
       - name: Write run summary
         run: |
-          report="$(find paper-signals -name '*.json' -type f | head -n 1)"
+          report="run-output/tokyo-signal.json"
           {
             echo "## Tokyo weather paper signal"
             echo
             echo "- Target date: $(jq -r '.target_date' "$report")"
+            echo "- Scheduled entry: $(jq -r '.scheduled_entry_time_utc' "$report")"
+            echo "- Quote captured: $(jq -r '.quote_time_utc' "$report")"
+            echo "- Entry delay: $(jq -r '.entry_delay_seconds' "$report") seconds"
+            echo "- Entry timing: **$(jq -r '.entry_timing' "$report")**"
             echo "- Action: **$(jq -r '.action' "$report")**"
             echo "- Legacy band: $(jq -r '.legacy_band | join(" / ")' "$report")"
             echo "- Optimized band: $(jq -r '.optimized_band | join(" / ")' "$report")"
@@ -59,6 +120,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tokyo-weather-paper-signal-${{ github.run_number }}
-          path: paper-signals/*.json
+          path: run-output/*.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Save forward paper ledger
+        uses: actions/upload-artifact@v4
+        with:
+          name: tokyo-weather-paper-ledger
+          path: paper-signals
           retention-days: 90
           if-no-files-found: error

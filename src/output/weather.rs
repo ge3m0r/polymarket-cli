@@ -1,5 +1,5 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
@@ -132,9 +132,29 @@ pub struct TokyoBacktestReport {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TokyoPaperPosition {
+    pub leg: String,
+    pub bucket: String,
+    pub yes_token: Option<String>,
+    pub market_slug: Option<String>,
+    pub shares: f64,
+    pub best_ask: f64,
+    pub taker_fee_per_share: f64,
+    pub cost_after_fee: f64,
+    pub conservative_fill_price: f64,
+    pub conservative_fee_per_share: f64,
+    pub conservative_cost: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct TokyoSignalReport {
     pub generated_at: DateTime<Utc>,
+    pub scheduled_entry_time_utc: DateTime<Utc>,
+    pub quote_time_utc: DateTime<Utc>,
+    pub entry_delay_seconds: i64,
+    pub maximum_entry_delay_minutes: u16,
+    pub entry_timing: String,
     pub target_date: NaiveDate,
     pub model: String,
     pub ensemble_members: usize,
@@ -153,6 +173,33 @@ pub struct TokyoSignalReport {
     pub expected_pnl_after_fee: f64,
     pub conservative_expected_pnl: f64,
     pub action: String,
+    pub positions: Vec<TokyoPaperPosition>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TokyoPaperSettlementReport {
+    pub settled_at: DateTime<Utc>,
+    pub target_date: NaiveDate,
+    pub signal_generated_at: DateTime<Utc>,
+    pub scheduled_entry_time_utc: DateTime<Utc>,
+    pub quote_time_utc: DateTime<Utc>,
+    pub entry_delay_seconds: i64,
+    pub entry_timing: String,
+    pub signal_action: String,
+    pub status: String,
+    pub winning_bucket: Option<String>,
+    pub observed_max_c: Option<f64>,
+    pub selected_band_hit: Option<bool>,
+    pub deployed_cost_after_fee: f64,
+    pub conservative_deployed_cost: f64,
+    pub payout: f64,
+    pub realized_pnl_after_fee: f64,
+    pub conservative_realized_pnl: f64,
+    pub counterfactual_payout: Option<f64>,
+    pub counterfactual_pnl_after_fee: Option<f64>,
+    pub conservative_counterfactual_pnl: Option<f64>,
+    pub positions: Vec<TokyoPaperPosition>,
     pub notes: Vec<String>,
 }
 
@@ -425,6 +472,11 @@ pub fn print_tokyo_signal(report: &TokyoSignalReport, output: OutputFormat) -> a
     }
 
     println!("Tokyo paper signal — {}", report.target_date);
+    println!("Scheduled entry: {}", report.scheduled_entry_time_utc);
+    println!(
+        "Quote captured: {} ({:+}s, {})",
+        report.quote_time_utc, report.entry_delay_seconds, report.entry_timing
+    );
     println!(
         "Strategy: {:.0}% legacy + {:.0}% optimizer; {} members",
         report.legacy_weight * 100.0,
@@ -443,5 +495,37 @@ pub fn print_tokyo_signal(report: &TokyoSignalReport, output: OutputFormat) -> a
         report.expected_pnl_after_fee, report.conservative_expected_pnl
     );
     println!("Paper action: {}", report.action);
+    Ok(())
+}
+
+pub fn print_tokyo_paper_settlement(
+    report: &TokyoPaperSettlementReport,
+    output: OutputFormat,
+) -> anyhow::Result<()> {
+    if matches!(output, OutputFormat::Json) {
+        return print_json(report);
+    }
+
+    println!("Tokyo paper settlement — {}", report.target_date);
+    println!("Status: {}", report.status);
+    println!(
+        "Entry quote: {} ({:+}s from schedule, {})",
+        report.quote_time_utc, report.entry_delay_seconds, report.entry_timing
+    );
+    println!("Signal action: {}", report.signal_action);
+    if let Some(winner) = &report.winning_bucket {
+        println!("Winning bucket: {winner}");
+    }
+    if let Some(hit) = report.selected_band_hit {
+        println!("Selected band hit: {}", if hit { "yes" } else { "no" });
+    }
+    println!(
+        "Deployed cost / payout / realized P&L: {:.3} / {:.3} / {:+.3} USDC",
+        report.deployed_cost_after_fee, report.payout, report.realized_pnl_after_fee
+    );
+    println!(
+        "Conservative deployed cost / P&L: {:.3} / {:+.3} USDC",
+        report.conservative_deployed_cost, report.conservative_realized_pnl
+    );
     Ok(())
 }

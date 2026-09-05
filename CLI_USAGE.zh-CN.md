@@ -371,6 +371,10 @@ polymarket -o json weather tokyo --date 2026-09-05
 polymarket -o json weather signal-tokyo \
   --legacy-weight 0.75 --size 5 --slippage 0.01 --min-expected-pnl 1
 
+# 只能使用当时保存的买点快照进行结算，禁止事后重新取价
+polymarket -o json weather settle-tokyo-paper \
+  --signal paper-signals/open/tokyo-2026-09-06.json
+
 # 默认回测最近 14 个连续的已结算东京事件
 polymarket weather backtest-tokyo
 
@@ -387,7 +391,9 @@ polymarket weather backtest-tokyo --since 2026-04-01 --until 2026-08-31 \
 
 这些命令只读取公开数据，不读取钱包，也不会下单。回测会用前一日归档的 GEFS 均值/离散度重建 31 条成员轨迹，对每条轨迹取日最高温，枚举全部连续四档，并选择扣除手续费和滑点后期望盈亏最高的组合；最高值不为正时空仓。`--legacy-weight` 接受 0–1：`0.5` 代表一半仓位使用旧版偏低四档、一半使用分布优化四档，再对混合组合应用同一个交易门槛。输出包含逐日概率覆盖、决策、成本、兑付、实际盈亏和累计 ROI。
 
-仓库中的 `.github/workflows/tokyo-weather-paper.yml` 默认每天 UTC 05:17（东京14:17）在 GitHub 云端运行 `signal-tokyo`，把 JSON 保存为90天 artifact，并在 Actions 运行摘要显示 BUY/SKIP、两个温度区间、成本和保守期望盈亏。云端任务不依赖本机开机。选择17分运行是为了避开 GitHub Actions 整点附近的调度高峰。
+仓库中的 `.github/workflows/tokyo-weather-paper.yml` 默认每天 UTC 05:17（东京14:17）在 GitHub 云端运行 `signal-tokyo`。信号通过一次 CLOB `/prices` 批量请求直接抓取 YES 的实时最佳卖价，并记录实际报价时间、相对计划买点的延迟、每条策略腿的份数、每档 `best ask`、手续费和滑点成本。只有在计划时间后15分钟内抓到的快照才进入 Artifact 内的 `paper-signals/open/` 前向账本；过早或过晚的运行标记为 `SKIP_OFF_SCHEDULE`，不计入策略收益。
+
+下一次云端运行会恢复最近的 `tokyo-weather-paper-ledger` Artifact，用 Polymarket 已结算的胜出档位结算其中的历史快照，并写入账本的 `paper-signals/settled/`。实际盈亏只使用原始买点快照，绝不在结算后重新查询价格。账本滚动保存90天，工作流对仓库保持只读，不会自动改动主分支。云端任务不依赖本机开机；选择17分运行是为了避开 GitHub Actions 整点附近的调度高峰。
 
 历史逐成员预报只保留约三天，因此 31 条轨迹是从逐小时 ensemble mean/spread 重建的近似分布，并非原始成员精确回放。历史 CLOB 价格也不是完整订单簿快照，保守结果用 `--slippage` 补偿部分执行偏差。详细方法、数据源和风险见
 [东京天气研究原型](docs/TOKYO_WEATHER_RESEARCH.zh-CN.md)。

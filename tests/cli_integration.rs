@@ -87,8 +87,18 @@ fn weather_signal_help_lists_strategy_options() {
             predicate::str::contains("--legacy-weight")
                 .and(predicate::str::contains("--size"))
                 .and(predicate::str::contains("--slippage"))
-                .and(predicate::str::contains("--min-expected-pnl")),
+                .and(predicate::str::contains("--min-expected-pnl"))
+                .and(predicate::str::contains("--max-entry-delay-minutes")),
         );
+}
+
+#[test]
+fn weather_settlement_help_requires_saved_signal() {
+    polymarket()
+        .args(["weather", "settle-tokyo-paper", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--signal"));
 }
 
 #[test]

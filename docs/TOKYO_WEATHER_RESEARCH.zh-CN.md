@@ -112,6 +112,12 @@ Open-Meteo 将 `_previous_day1` 定义为每个有效时刻前 24 小时发布�
 
 CLOB `/batch-prices-history` 提供历史价格序列，但不提供当时完整的 best ask 深度。基础结果把该价格作为入场代理；保守结果通过 `--slippage` 给四腿逐份加价。两者都假设四腿能够同时成交，因此真实执行通常不会优于保守结果。
 
+## 前向模拟收益账本
+
+云端 `signal-tokyo` 在计划买点通过一次公开 CLOB `/prices` 批量请求直接读取 YES 最佳卖价，随后立即冻结 JSON 快照，记录报价时间、延迟、所有入选档位的 `best ask`、份数、手续费及保守滑点成本。只有 UTC 05:17 后15分钟内的快照属于标准样本；其他手动或延迟运行只用于诊断，不计入收益。
+
+次日 `settle-tokyo-paper` 使用 Polymarket 已结算胜出档位结算原始快照。云端任务通过只读仓库权限在连续的 `tokyo-weather-paper-ledger` Artifact 之间滚动保存 `paper-signals/open/` 和 `paper-signals/settled/`，不会自动提交主分支。结算后的实际盈亏不会调用历史价格接口，也不会用结算后的价格倒推买点。前向账本与使用价格代理的历史回测必须分别统计。
+
 ## 去年同日温度参考
 
 实时 `weather tokyo` 输出增加 Open-Meteo Historical Weather API 的去年同日最高温。它用于检查季节性和异常天气，例如当前模型显著偏离去年同日时提示进一步检查；它不直接与今年预报取平均，也不单独决定下注档位。

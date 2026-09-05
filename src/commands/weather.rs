@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow, ensure};
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
@@ -12,9 +14,9 @@ use serde_json::Value;
 
 use crate::output::OutputFormat;
 use crate::output::weather::{
-    FeeSchedule, HedgeSummary, TokyoBacktestReport, TokyoBacktestRow, TokyoSignalReport,
-    TokyoWeatherReport, WeatherMarketRow, print_tokyo_backtest, print_tokyo_signal,
-    print_tokyo_weather,
+    FeeSchedule, HedgeSummary, TokyoBacktestReport, TokyoBacktestRow, TokyoPaperPosition,
+    TokyoPaperSettlementReport, TokyoSignalReport, TokyoWeatherReport, WeatherMarketRow,
+    print_tokyo_backtest, print_tokyo_paper_settlement, print_tokyo_signal, print_tokyo_weather,
 };
 
 const TOKYO_LATITUDE: f64 = 35.553;
@@ -26,8 +28,11 @@ const PREVIOUS_RUNS_URL: &str = "https://previous-runs-api.open-meteo.com/v1/for
 const OBSERVATION_URL: &str = "https://aviationweather.gov/api/data/metar";
 const GAMMA_MARKETS_URL: &str = "https://gamma-api.polymarket.com/markets";
 const GAMMA_EVENTS_KEYSET_URL: &str = "https://gamma-api.polymarket.com/events/keyset";
+const CLOB_PRICES_URL: &str = "https://clob.polymarket.com/prices";
 const TOKYO_DAILY_WEATHER_SERIES_ID: &str = "10740";
 const HISTORICAL_WEATHER_URL: &str = "https://archive-api.open-meteo.com/v1/archive";
+const PAPER_ENTRY_HOUR_UTC: u32 = 5;
+const PAPER_ENTRY_MINUTE_UTC: u32 = 17;
 
 #[derive(Args)]
 pub struct WeatherArgs {
@@ -77,6 +82,17 @@ pub enum WeatherCommand {
         /// Minimum conservative expected P&L required for a paper BUY
         #[arg(long, default_value_t = 1.0)]
         min_expected_pnl: f64,
+
+        /// Maximum delay after the scheduled quote time accepted into the forward ledger
+        #[arg(long, default_value_t = 15)]
+        max_entry_delay_minutes: u16,
+    },
+
+    /// Settle a saved Tokyo paper signal using the resolved Polymarket winner
+    SettleTokyoPaper {
+        /// JSON signal snapshot created at the simulated buy point
+        #[arg(long)]
+        signal: PathBuf,
     },
 
     /// Backtest Tokyo resolved markets against prior GFS forecasts (read-only)
@@ -502,6 +518,49 @@ async fn fetch_entry_prices(
     Ok(Some(prices))
 }
 
+async fn fetch_live_best_asks(markets: &[Market]) -> Result<Vec<f64>> {
+    let tokens = markets
+        .iter()
+        .map(|market| {
+            market
+                .clob_token_ids
+                .as_deref()
+                .and_then(|ids| ids.first())
+                .map(ToString::to_string)
+                .context("Tokyo market is missing its YES token ID")
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let request = tokens
+        .iter()
+        .map(|token| serde_json::json!({"token_id": token, "side": "SELL"}))
+        .collect::<Vec<_>>();
+    let response = reqwest::Client::new()
+        .post(CLOB_PRICES_URL)
+        .json(&request)
+        .send()
+        .await
+        .context("Failed to request live CLOB best asks")?
+        .error_for_status()
+        .context("CLOB best-ask request failed")?
+        .json::<Value>()
+        .await
+        .context("Failed to parse live CLOB best asks")?;
+
+    tokens
+        .iter()
+        .map(|token| {
+            let value = response
+                .get(token)
+                .and_then(|sides| sides.get("SELL"))
+                .context("CLOB response is missing a YES best ask")?;
+            value
+                .as_f64()
+                .or_else(|| value.as_str().and_then(|price| price.parse().ok()))
+                .context("CLOB returned an invalid YES best ask")
+        })
+        .collect()
+}
+
 fn build_backtest_row(event: &ResolvedTokyoEvent, forecast_max_c: f64) -> Option<TokyoBacktestRow> {
     let predicted_index = predicted_market_index(event, forecast_max_c)?;
     Some(TokyoBacktestRow {
@@ -550,6 +609,69 @@ struct BandChoice {
     expected_pnl: f64,
     conservative_total_cost: f64,
     conservative_expected_pnl: f64,
+}
+
+fn scheduled_paper_entry_time(target_date: NaiveDate) -> Result<DateTime<Utc>> {
+    let entry_date = target_date
+        .pred_opt()
+        .context("Could not calculate the paper entry date")?;
+    let entry = entry_date
+        .and_hms_opt(PAPER_ENTRY_HOUR_UTC, PAPER_ENTRY_MINUTE_UTC, 0)
+        .context("Could not calculate the paper entry time")?;
+    Ok(DateTime::<Utc>::from_naive_utc_and_offset(entry, Utc))
+}
+
+fn paper_entry_timing(
+    quote_time: DateTime<Utc>,
+    scheduled_time: DateTime<Utc>,
+    maximum_delay_minutes: u16,
+) -> (&'static str, i64) {
+    let delay_seconds = (quote_time - scheduled_time).num_seconds();
+    let timing = if delay_seconds < 0 {
+        "EARLY"
+    } else if delay_seconds <= i64::from(maximum_delay_minutes) * 60 {
+        "ON_TIME"
+    } else {
+        "LATE"
+    };
+    (timing, delay_seconds)
+}
+
+fn build_paper_positions(
+    markets: &[Market],
+    choice: &BandChoice,
+    leg: &str,
+    shares: f64,
+    slippage: f64,
+) -> Vec<TokyoPaperPosition> {
+    markets[choice.range.clone()]
+        .iter()
+        .zip(&choice.entry_prices)
+        .filter_map(|(market, best_ask)| {
+            let bucket = market.question.as_deref().map(bucket_label)?;
+            let taker_fee_per_share = 0.05 * best_ask * (1.0 - best_ask);
+            let conservative_fill_price = (best_ask + slippage).min(0.999);
+            let conservative_fee_per_share =
+                0.05 * conservative_fill_price * (1.0 - conservative_fill_price);
+            Some(TokyoPaperPosition {
+                leg: leg.to_string(),
+                bucket,
+                yes_token: market
+                    .clob_token_ids
+                    .as_deref()
+                    .and_then(|ids| ids.first())
+                    .map(ToString::to_string),
+                market_slug: market.slug.clone(),
+                shares,
+                best_ask: *best_ask,
+                taker_fee_per_share,
+                cost_after_fee: shares * (best_ask + taker_fee_per_share),
+                conservative_fill_price,
+                conservative_fee_per_share,
+                conservative_cost: shares * (conservative_fill_price + conservative_fee_per_share),
+            })
+        })
+        .collect()
 }
 
 fn choose_four_bucket_band(
@@ -780,7 +902,7 @@ async fn fetch_last_year_max(date: NaiveDate) -> Result<(NaiveDate, Option<f64>)
 async fn fetch_observed_max(date: NaiveDate) -> Result<(Option<f64>, Option<String>)> {
     let observations = reqwest::Client::new()
         .get(OBSERVATION_URL)
-        .query(&[("ids", "RJTT"), ("format", "json"), ("hours", "30")])
+        .query(&[("ids", "RJTT"), ("format", "json"), ("hours", "72")])
         .send()
         .await
         .context("Failed to request RJTT METAR observations")?
@@ -817,6 +939,97 @@ async fn fetch_observed_max(date: NaiveDate) -> Result<(Option<f64>, Option<Stri
     }
 
     Ok((max_temperature, latest.map(|(_, raw)| raw)))
+}
+
+async fn settle_tokyo_paper_signal(signal_path: &PathBuf, output: OutputFormat) -> Result<()> {
+    let contents = fs::read_to_string(signal_path)
+        .with_context(|| format!("Failed to read paper signal {}", signal_path.display()))?;
+    let signal: TokyoSignalReport = serde_json::from_str(&contents)
+        .with_context(|| format!("Failed to parse paper signal {}", signal_path.display()))?;
+    ensure!(
+        !signal.positions.is_empty(),
+        "Paper signal has no immutable entry positions"
+    );
+
+    let events =
+        fetch_resolved_events(Some(signal.target_date), Some(signal.target_date), 1).await?;
+    let event = events.first();
+    let winning_bucket = event.and_then(|resolved| {
+        resolved.markets[resolved.winner_index]
+            .question
+            .as_deref()
+            .map(bucket_label)
+    });
+    let (observed_max_c, _) = fetch_observed_max(signal.target_date).await?;
+    let selected_band_hit = winning_bucket.as_ref().map(|winner| {
+        signal
+            .positions
+            .iter()
+            .any(|position| &position.bucket == winner)
+    });
+    let counterfactual_payout = winning_bucket.as_ref().map(|winner| {
+        signal
+            .positions
+            .iter()
+            .filter(|position| &position.bucket == winner)
+            .map(|position| position.shares)
+            .sum::<f64>()
+    });
+    let quoted_cost = signal
+        .positions
+        .iter()
+        .map(|position| position.cost_after_fee)
+        .sum::<f64>();
+    let conservative_quoted_cost = signal
+        .positions
+        .iter()
+        .map(|position| position.conservative_cost)
+        .sum::<f64>();
+    let traded = signal.action == "PAPER_BUY" && winning_bucket.is_some();
+    let deployed_cost_after_fee = if traded { quoted_cost } else { 0.0 };
+    let conservative_deployed_cost = if traded {
+        conservative_quoted_cost
+    } else {
+        0.0
+    };
+    let payout = if traded {
+        counterfactual_payout.unwrap_or(0.0)
+    } else {
+        0.0
+    };
+    let report = TokyoPaperSettlementReport {
+        settled_at: Utc::now(),
+        target_date: signal.target_date,
+        signal_generated_at: signal.generated_at,
+        scheduled_entry_time_utc: signal.scheduled_entry_time_utc,
+        quote_time_utc: signal.quote_time_utc,
+        entry_delay_seconds: signal.entry_delay_seconds,
+        entry_timing: signal.entry_timing.clone(),
+        signal_action: signal.action.clone(),
+        status: if winning_bucket.is_some() {
+            "SETTLED".to_string()
+        } else {
+            "PENDING".to_string()
+        },
+        winning_bucket,
+        observed_max_c,
+        selected_band_hit,
+        deployed_cost_after_fee,
+        conservative_deployed_cost,
+        payout,
+        realized_pnl_after_fee: payout - deployed_cost_after_fee,
+        conservative_realized_pnl: payout - conservative_deployed_cost,
+        counterfactual_payout,
+        counterfactual_pnl_after_fee: counterfactual_payout.map(|value| value - quoted_cost),
+        conservative_counterfactual_pnl: counterfactual_payout
+            .map(|value| value - conservative_quoted_cost),
+        positions: signal.positions,
+        notes: vec![
+            "Realized P&L uses only the immutable best-ask snapshot captured at the recorded quote time; prices are never reconstructed after settlement.".to_string(),
+            "Historical backtest price proxies are intentionally excluded from this forward paper ledger.".to_string(),
+        ],
+    };
+    print_tokyo_paper_settlement(&report, output)
 }
 
 async fn fetch_fee_schedule(market: Option<&Market>) -> Result<Option<FeeSchedule>> {
@@ -1017,6 +1230,7 @@ pub async fn execute(
             size,
             slippage,
             min_expected_pnl,
+            max_entry_delay_minutes,
         } => {
             ensure!(
                 (0.0..=1.0).contains(&legacy_weight),
@@ -1036,11 +1250,12 @@ pub async fn execute(
                 "No complete open Tokyo temperature market found for {date}"
             );
             let (_, maxima) = fetch_ensemble(date, &model).await?;
-            let prices = markets
-                .iter()
-                .map(|market| market.best_ask.and_then(|price| price.to_f64()))
-                .collect::<Option<Vec<_>>>()
-                .context("At least one Tokyo temperature bucket has no best ask")?;
+            let fee_schedule = fetch_fee_schedule(markets.first()).await?;
+            let prices = fetch_live_best_asks(&markets).await?;
+            let quote_time = Utc::now();
+            let scheduled_entry_time = scheduled_paper_entry_time(date)?;
+            let (entry_timing, entry_delay_seconds) =
+                paper_entry_timing(quote_time, scheduled_entry_time, max_entry_delay_minutes);
             let optimized = choose_four_bucket_band_for_markets(
                 &markets,
                 &maxima,
@@ -1081,9 +1296,22 @@ pub async fn execute(
             let expected_pnl = optimized.expected_pnl + legacy.expected_pnl;
             let conservative_expected_pnl =
                 optimized.conservative_expected_pnl + legacy.conservative_expected_pnl;
-            let fee_schedule = fetch_fee_schedule(markets.first()).await?;
+            let mut positions =
+                build_paper_positions(&markets, &legacy, "legacy", size * legacy_weight, slippage);
+            positions.extend(build_paper_positions(
+                &markets,
+                &optimized,
+                "optimizer",
+                size * (1.0 - legacy_weight),
+                slippage,
+            ));
             let report = TokyoSignalReport {
-                generated_at: Utc::now(),
+                generated_at: quote_time,
+                scheduled_entry_time_utc: scheduled_entry_time,
+                quote_time_utc: quote_time,
+                entry_delay_seconds,
+                maximum_entry_delay_minutes: max_entry_delay_minutes,
+                entry_timing: entry_timing.to_string(),
                 target_date: date,
                 model,
                 ensemble_members: maxima.len(),
@@ -1103,13 +1331,20 @@ pub async fn execute(
                     + optimized.conservative_total_cost,
                 expected_pnl_after_fee: expected_pnl,
                 conservative_expected_pnl,
-                action: if conservative_expected_pnl >= min_expected_pnl {
+                action: if entry_timing != "ON_TIME" {
+                    "SKIP_OFF_SCHEDULE".to_string()
+                } else if conservative_expected_pnl >= min_expected_pnl {
                     "PAPER_BUY".to_string()
                 } else {
                     "SKIP".to_string()
                 },
+                positions,
                 notes: vec![
                     "Simulation only: this command never reads a wallet or places an order."
+                        .to_string(),
+                    "Forward-ledger P&L must use this immutable quote snapshot; a delayed or early run is excluded from standard strategy returns."
+                        .to_string(),
+                    "Entry asks come directly from one public CLOB batch-prices request (SELL side = best ask), not from Gamma display prices."
                         .to_string(),
                     format!(
                         "Market fee schedule: {}",
@@ -1123,6 +1358,9 @@ pub async fn execute(
                 ],
             };
             print_tokyo_signal(&report, output)
+        }
+        WeatherCommand::SettleTokyoPaper { signal } => {
+            settle_tokyo_paper_signal(&signal, output).await
         }
         WeatherCommand::BacktestTokyo {
             since,
@@ -1414,5 +1652,31 @@ mod tests {
         assert_eq!(maxima.len(), 31);
         assert!(maxima.windows(2).all(|pair| pair[0] <= pair[1]));
         assert!(maxima[15] >= 21.99 && maxima[15] <= 22.01);
+    }
+
+    #[test]
+    fn paper_entry_time_is_fixed_on_preceding_day() {
+        let target = NaiveDate::from_ymd_opt(2026, 9, 6).unwrap();
+        let scheduled = scheduled_paper_entry_time(target).unwrap();
+        assert_eq!(scheduled.to_rfc3339(), "2026-09-05T05:17:00+00:00");
+    }
+
+    #[test]
+    fn delayed_paper_quote_is_excluded_from_standard_returns() {
+        let scheduled = DateTime::parse_from_rfc3339("2026-09-05T05:17:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(
+            paper_entry_timing(scheduled + Duration::minutes(15), scheduled, 15),
+            ("ON_TIME", 900)
+        );
+        assert_eq!(
+            paper_entry_timing(scheduled + Duration::minutes(16), scheduled, 15),
+            ("LATE", 960)
+        );
+        assert_eq!(
+            paper_entry_timing(scheduled - Duration::seconds(1), scheduled, 15),
+            ("EARLY", -1)
+        );
     }
 }
