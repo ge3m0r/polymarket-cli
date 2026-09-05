@@ -2,8 +2,8 @@ name: Tokyo weather paper signal
 
 on:
   schedule:
-    # 14:05 in Tokyo. GitHub schedules use UTC and may start a few minutes late.
-    - cron: "5 5 * * *"
+    # 14:17 in Tokyo. Avoid the start-of-hour GitHub Actions load peak.
+    - cron: "17 5 * * *"
   workflow_dispatch:
 
 permissions:
