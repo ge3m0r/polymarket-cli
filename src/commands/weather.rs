@@ -31,7 +31,7 @@ const GAMMA_EVENTS_KEYSET_URL: &str = "https://gamma-api.polymarket.com/events/k
 const CLOB_PRICES_URL: &str = "https://clob.polymarket.com/prices";
 const TOKYO_DAILY_WEATHER_SERIES_ID: &str = "10740";
 const HISTORICAL_WEATHER_URL: &str = "https://archive-api.open-meteo.com/v1/archive";
-const PAPER_ENTRY_HOUR_UTC: u32 = 5;
+const PAPER_ENTRY_HOUR_UTC: u32 = 0;
 const PAPER_ENTRY_MINUTE_UTC: u32 = 17;
 
 #[derive(Args)]
@@ -122,15 +122,23 @@ pub enum WeatherCommand {
         size: f64,
 
         /// Simulated entry hour on the preceding day (UTC)
-        #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u8).range(0..=23))]
+        #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=23))]
         entry_hour_utc: u8,
+
+        /// Simulated entry minute
+        #[arg(long, default_value_t = 15, value_parser = clap::value_parser!(u8).range(0..=59))]
+        entry_minute_utc: u8,
 
         /// Extra cost per share for the conservative execution scenario
         #[arg(long, default_value_t = 0.01)]
         slippage: f64,
 
+        /// Minimum conservative expected P&L required for a simulated BUY
+        #[arg(long, default_value_t = 1.5)]
+        min_expected_pnl: f64,
+
         /// Capital weight for the legacy lower-leaning band (0=current, 0.5=50/50 blend)
-        #[arg(long, default_value_t = 0.0, value_parser = clap::value_parser!(f64))]
+        #[arg(long, default_value_t = 0.75, value_parser = clap::value_parser!(f64))]
         legacy_weight: f64,
     },
 }
@@ -587,6 +595,7 @@ fn build_backtest_row(event: &ResolvedTokyoEvent, forecast_max_c: f64) -> Option
         selected_band_hit: false,
         entry_time_utc: None,
         entry_prices: Vec::new(),
+        legacy_entry_prices: Vec::new(),
         position_size_per_bucket: 0.0,
         entry_cost: None,
         taker_fee: None,
@@ -1370,11 +1379,17 @@ pub async fn execute(
             model,
             size,
             entry_hour_utc,
+            entry_minute_utc,
             slippage,
+            min_expected_pnl,
             legacy_weight,
         } => {
             ensure!(size > 0.0, "--size must be greater than zero");
             ensure!(slippage >= 0.0, "--slippage must not be negative");
+            ensure!(
+                min_expected_pnl >= 0.0,
+                "--min-expected-pnl must not be negative"
+            );
             ensure!(
                 (0.0..=1.0).contains(&legacy_weight),
                 "--legacy-weight must be between 0 and 1"
@@ -1442,8 +1457,11 @@ pub async fn execute(
                     rows.push(row);
                     continue;
                 };
-                let Some(entry_naive) = entry_date.and_hms_opt(u32::from(entry_hour_utc), 0, 0)
-                else {
+                let Some(entry_naive) = entry_date.and_hms_opt(
+                    u32::from(entry_hour_utc),
+                    u32::from(entry_minute_utc),
+                    0,
+                ) else {
                     rows.push(row);
                     continue;
                 };
@@ -1506,9 +1524,10 @@ pub async fn execute(
                     let legacy_hit = legacy.range.contains(&event.winner_index);
                     row.selected_band_hit = optimized_hit || (legacy_weight > 0.0 && legacy_hit);
                     row.entry_prices = optimized.entry_prices.clone();
+                    row.legacy_entry_prices = legacy.entry_prices.clone();
 
-                    // A non-positive edge is a real decision: keep the simulated capital in cash.
-                    row.traded = conservative_expected_pnl > 0.0;
+                    // An edge below the configured floor is a real decision: keep the capital in cash.
+                    row.traded = conservative_expected_pnl >= min_expected_pnl;
                     let payout = if row.traded {
                         size * (1.0 - legacy_weight) * if optimized_hit { 1.0 } else { 0.0 }
                             + size * legacy_weight * if legacy_hit { 1.0 } else { 0.0 }
@@ -1550,7 +1569,7 @@ pub async fn execute(
                 .count();
             let profitable_events = traded_rows
                 .iter()
-                .filter(|row| row.pnl.is_some_and(|pnl| pnl > 0.0))
+                .filter(|row| row.conservative_pnl.is_some_and(|pnl| pnl > 0.0))
                 .count();
             let total_cost = traded_rows
                 .iter()
@@ -1588,7 +1607,9 @@ pub async fn execute(
                 },
                 position_size_per_bucket: size,
                 entry_hour_utc,
+                entry_minute_utc,
                 conservative_slippage_per_share: slippage,
+                minimum_conservative_expected_pnl: min_expected_pnl,
                 legacy_weight,
                 profitable_events,
                 total_cost,
@@ -1611,7 +1632,7 @@ pub async fn execute(
                 notes: vec![
                     "Forecasts use prior-run GEFS ensemble means and spreads archived at a fixed lead time for each valid hour; settlement winners come from closed Polymarket markets.".to_string(),
                     "Because individual historical GEFS members are retained for only three days, 31 pseudo-members are reconstructed from normal quantiles of each hourly mean/spread with rank preserved across hours. This approximates, but does not reproduce, the original 31 members.".to_string(),
-                    format!("Every contiguous four-bucket band is evaluated at historical entry prices. {:.0}% of capital follows the legacy lower-leaning band and {:.0}% follows the distribution optimizer; the blended trade is skipped when conservative expected P&L is not positive.", legacy_weight * 100.0, (1.0 - legacy_weight) * 100.0),
+                    format!("Every contiguous four-bucket band is evaluated at historical entry prices. {:.0}% of capital follows the legacy lower-leaning band and {:.0}% follows the distribution optimizer; the blended trade is skipped below the {:.3} conservative expected P&L threshold.", legacy_weight * 100.0, (1.0 - legacy_weight) * 100.0, min_expected_pnl),
                     "CLOB price history is a price series, not an archived best-ask book. The conservative scenario adds the configured slippage to every share.".to_string(),
                 ],
             };
@@ -1658,12 +1679,12 @@ mod tests {
     fn paper_entry_time_is_fixed_on_preceding_day() {
         let target = NaiveDate::from_ymd_opt(2026, 9, 6).unwrap();
         let scheduled = scheduled_paper_entry_time(target).unwrap();
-        assert_eq!(scheduled.to_rfc3339(), "2026-09-05T05:17:00+00:00");
+        assert_eq!(scheduled.to_rfc3339(), "2026-09-05T00:17:00+00:00");
     }
 
     #[test]
     fn delayed_paper_quote_is_excluded_from_standard_returns() {
-        let scheduled = DateTime::parse_from_rfc3339("2026-09-05T05:17:00Z")
+        let scheduled = DateTime::parse_from_rfc3339("2026-09-05T00:17:00Z")
             .unwrap()
             .with_timezone(&Utc);
         assert_eq!(

@@ -73,7 +73,9 @@ fn weather_backtest_help_lists_history_options() {
                 .and(predicate::str::contains("--model"))
                 .and(predicate::str::contains("--size"))
                 .and(predicate::str::contains("--entry-hour-utc"))
-                .and(predicate::str::contains("--slippage")),
+                .and(predicate::str::contains("--entry-minute-utc"))
+                .and(predicate::str::contains("--slippage"))
+                .and(predicate::str::contains("--min-expected-pnl")),
         );
 }
 

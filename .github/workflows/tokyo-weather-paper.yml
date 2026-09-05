@@ -2,8 +2,8 @@ name: Tokyo weather paper signal
 
 on:
   schedule:
-    # 14:17 in Tokyo. Avoid the start-of-hour GitHub Actions load peak.
-    - cron: "17 5 * * *"
+    # 09:17 in Tokyo on the day before settlement. Avoid the start-of-hour load peak.
+    - cron: "17 0 * * *"
   workflow_dispatch:
 
 permissions:
@@ -79,7 +79,7 @@ jobs:
             --legacy-weight 0.75 \
             --size 5 \
             --slippage 0.01 \
-            --min-expected-pnl 1 \
+            --min-expected-pnl 1.5 \
             --max-entry-delay-minutes 15 \
             > "$report"
           target="$(jq -r '.target_date' "$report")"

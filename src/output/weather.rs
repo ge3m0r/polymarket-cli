@@ -88,7 +88,10 @@ pub struct TokyoBacktestRow {
     pub traded: bool,
     pub selected_band_hit: bool,
     pub entry_time_utc: Option<DateTime<Utc>>,
+    /// Historical prices for `selected_band`, in matching order.
     pub entry_prices: Vec<f64>,
+    /// Historical prices for `legacy_band`, in matching order.
+    pub legacy_entry_prices: Vec<f64>,
     pub position_size_per_bucket: f64,
     pub entry_cost: Option<f64>,
     pub taker_fee: Option<f64>,
@@ -117,7 +120,9 @@ pub struct TokyoBacktestReport {
     pub selected_band_accuracy: f64,
     pub position_size_per_bucket: f64,
     pub entry_hour_utc: u8,
+    pub entry_minute_utc: u8,
     pub conservative_slippage_per_share: f64,
+    pub minimum_conservative_expected_pnl: f64,
     pub legacy_weight: f64,
     pub profitable_events: usize,
     pub total_cost: f64,
@@ -386,7 +391,8 @@ pub fn print_tokyo_backtest(
         report.exact_accuracy * 100.0
     );
     println!(
-        "Distribution-optimized 4-bucket trades: {}, skipped: {}, hits: {}/{} ({:.1}%)",
+        "4-bucket trades (conservative expected P&L >= {:.3}): {}, skipped: {}, hits: {}/{} ({:.1}%)",
+        report.minimum_conservative_expected_pnl,
         report.traded_event_count,
         report.skipped_event_count,
         report.selected_band_hits,
@@ -455,7 +461,7 @@ pub fn print_tokyo_backtest(
     println!("{}", Table::new(rows).with(Style::rounded()));
     println!();
     println!(
-        "Each day enumerates every contiguous four-bucket band and trades only when its modeled expected P&L remains positive after fee and configured slippage."
+        "Each day enumerates every contiguous four-bucket band and trades only when its conservative modeled expected P&L reaches the configured threshold after fee and slippage."
     );
     println!(
         "Historical GEFS members are reconstructed from the prior-day archived hourly ensemble mean/spread using 31 normal quantiles with rank preserved across hours; this is an approximation, not the original member archive."
