@@ -2,8 +2,9 @@ name: Tokyo weather paper signal
 
 on:
   schedule:
-    # 09:17 in Tokyo on the day before settlement. Avoid the start-of-hour load peak.
-    - cron: "17 0 * * *"
+    # Retry within the accepted entry window in case GitHub delays or drops one schedule.
+    # These are 09:17, 09:22, and 09:27 in Tokyo on the day before settlement.
+    - cron: "17,22,27 0 * * *"
   workflow_dispatch:
 
 permissions:
@@ -71,6 +72,7 @@ jobs:
           done
 
       - name: Generate paper signal
+        id: generate_signal
         run: |
           report="run-output/tokyo-signal.json"
           target/release/polymarket \
@@ -83,9 +85,17 @@ jobs:
             --max-entry-delay-minutes 15 \
             > "$report"
           target="$(jq -r '.target_date' "$report")"
+          ledger_path="paper-signals/open/tokyo-${target}.json"
+          ledger_action="not_saved_off_schedule"
           if [ "$(jq -r '.entry_timing' "$report")" = "ON_TIME" ]; then
-            cp "$report" "paper-signals/open/tokyo-${target}.json"
+            if [ -e "$ledger_path" ]; then
+              ledger_action="kept_existing_snapshot"
+            else
+              cp "$report" "$ledger_path"
+              ledger_action="saved_first_on_time_snapshot"
+            fi
           fi
+          echo "ledger_action=$ledger_action" >> "$GITHUB_OUTPUT"
 
       - name: Update ledger metadata
         run: |
@@ -107,6 +117,7 @@ jobs:
             echo "- Entry delay: $(jq -r '.entry_delay_seconds' "$report") seconds"
             echo "- Entry timing: **$(jq -r '.entry_timing' "$report")**"
             echo "- Action: **$(jq -r '.action' "$report")**"
+            echo "- Ledger: **${{ steps.generate_signal.outputs.ledger_action }}**"
             echo "- Legacy band: $(jq -r '.legacy_band | join(" / ")' "$report")"
             echo "- Optimized band: $(jq -r '.optimized_band | join(" / ")' "$report")"
             echo "- Blended coverage: $(jq -r '.blended_coverage * 100 | tostring' "$report")%"
